@@ -1545,7 +1545,7 @@ final class Decls
 			}
 			if ($launch['error'] !== '')
 			{
-				$error = 'строка ' . $task['index'] . ' (VIN ' . $task['vin'] . '): бизнес-процесс не запустился — ' . $launch['error'];
+				$error = 'строка ' . $task['index'] . ' (VIN ' . $task['vin'] . ') не отправилась — ' . $launch['error'];
 				break;
 			}
 			$data['launches'][$task['rowId']] = [

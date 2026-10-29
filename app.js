@@ -1385,7 +1385,7 @@ function openXmlDialog(parsed) {
       const dt = compact(root.querySelector("#dlg-xml-dt").value);
       const problem = dtProblem(dt);
       if (problem) return problem;
-      if (state.sending) return "Идёт отправка в бизнес-процесс — дождитесь её окончания.";
+      if (state.sending) return "Идёт отправка — дождитесь её окончания.";
       if (findByDt(dt)) return `Декларация ДТ ${dt} уже в работе — она в списке ниже. Чтобы загрузить XML заново, сначала удалите её.`;
       try {
         const found = (await api("decl.find", {q: dt})).items || [];
@@ -1780,11 +1780,11 @@ function declHtml(decl) {
     : '<div class="decl-empty">В декларации нет строк. Нажмите «+ Строка» или удалите декларацию.</div>';
   let foot;
   if (sent) {
-    foot = `<span>Отправлена в бизнес-процесс ${escapeHtml(fmtTime(decl.sentAt))}${decl.sentBy ? `, ${escapeHtml(decl.sentBy.name)}` : ""}`
+    foot = `<span>Отправлена ${escapeHtml(fmtTime(decl.sentAt))}${decl.sentBy ? `, ${escapeHtml(decl.sentBy.name)}` : ""}`
       + ` — ${plural(decl.launchTotal || decl.rows.length, "строка", "строки", "строк")}. Строки не редактируются.</span>`;
   } else if (sending) {
-    foot = `<span class="warn">Отправка не закончена: в бизнес-процесс ушло ${decl.launched} из ${decl.launchTotal} строк.`
-      + " Нажмите «Отправить» — уйдут остальные. Правки закрыты.</span>";
+    foot = `<span class="warn">Отправка не закончена: отправлено ${decl.launched} из ${decl.launchTotal} строк.`
+      + " Нажмите «Отправить» — отправятся остальные. Правки закрыты.</span>";
   } else {
     foot = `<button class="btn ghost small add-row" type="button">+ Строка</button>
        <span>Слева от строки: ${ICON.plus} — пустая строка ниже, ${ICON.copy} — копия строки. Курс и проценты — в заголовках колонок, их можно менять.
@@ -2538,20 +2538,20 @@ function openSend() {
   }
   const item = (decl) => {
     const check = checks.get(decl.id);
-    const more = decl.status === "sending" ? ` · продолжить: ушло ${decl.launched} из ${decl.launchTotal}` : "";
+    const more = decl.status === "sending" ? ` · уже отправлено ${decl.launched} из ${decl.launchTotal}, отправятся остальные` : "";
     return `<label class="send-item"><input type="checkbox" value="${decl.id}" checked>
       <span><b>ДТ ${escapeHtml(decl.dt)}</b><small>${escapeHtml(vinsTitle(decl))}<br>${plural(decl.rows.length, "строка", "строки", "строк")}`
-      + ` — столько же запусков БП · итого ${money(check.totals.total)} ₽${more}</small></span></label>`;
+      + ` · итого ${money(check.totals.total)} ₽${more}</small></span></label>`;
   };
   const noProduct = ready.filter((decl) => decl.status === "draft").reduce((n, decl) => n + decl.rows.filter((row) => !row.product).length, 0);
   const warn = noProduct
-    ? `<div class="notice send-warn">В ${plural(noProduct, "строке", "строках", "строках")} VIN не найден в каталоге —`
-      + " «ID товара» и «Модификация» уйдут в бизнес-процесс пустыми.</div>"
+    ? `<div class="notice send-warn">В ${plural(noProduct, "строке", "строках", "строках")} VIN не найден в каталоге товаров —`
+      + " проверьте VIN.</div>"
     : "";
   openDialog({
-    title: "Отправить в бизнес-процесс",
-    body: `<p class="dialog-lead">Каждая строка уйдёт в бизнес-процесс отдельным запуском — со всеми своими значениями.
-        Отметьте, что отправить. После отправки декларацию изменить нельзя.</p>
+    title: "Отправить декларации",
+    body: `<p class="dialog-lead">Проверьте декларации и отметьте, что отправить.
+        После отправки декларацию изменить нельзя.</p>
       <div class="send-list">${ready.map(item).join("")}</div>${warn}`,
     ok: `Отправить (${ready.length})`,
     onOpen: (root, okButton) => {
@@ -2624,7 +2624,7 @@ async function sendOne(decl, warnings) {
     const data = await api("decl.send", {id: decl.id});
     applyServer(decl, data.item);
     (data.warnings || []).forEach((text) => warnings.push(`ДТ ${decl.dt}, ${text}`));
-    state.progress = `Отправляю ДТ ${decl.dt}: в бизнес-процесс ушло ${decl.launched} из ${decl.launchTotal || decl.rows.length} строк…`;
+    state.progress = `Отправляю ДТ ${decl.dt}: отправлено ${decl.launched} из ${decl.launchTotal || decl.rows.length} строк…`;
     renderQueueStatus(refresh(decl));
     if (data.error) throw new Error(data.error);
     if (decl.status === "sent") break;
@@ -2677,8 +2677,12 @@ async function sendDecls(decls) {
   }
   const where = "Из списка она убрана — найти её можно, набрав номер ДТ в «Новой декларации».";
   if (failed.length) toast(`Отправлено: ${done}. Не отправились — ${failed.join("; ")}`, "err");
-  else if (warnings.length) toast(`Отправлено: ${done}. Бизнес-процесс запущен, но — ${[...new Set(warnings)].slice(0, 3).join("; ")}`, "err");
-  else toast(`Отправлено в бизнес-процесс: ${plural(done, "декларация", "декларации", "деклараций")}. ${done > 1 ? where.replace("она убрана — найти её", "они убраны — найти их") : where}`, "ok");
+  else if (warnings.length) {
+    // Подробности — для владельца, в журнал действий; сотруднику — коротко.
+    Audit.track("send.warn", `Отправлено с замечаниями: ${[...new Set(warnings)].join("; ")}`);
+    toast(`Отправлено: ${plural(done, "декларация", "декларации", "деклараций")}. Есть замечания — подробности у владельца в журнале действий.`, "err");
+  }
+  else toast(`Отправлено: ${plural(done, "декларация", "декларации", "деклараций")}. ${done > 1 ? where.replace("она убрана — найти её", "они убраны — найти их") : where}`, "ok");
 }
 
 
