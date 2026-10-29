@@ -1135,7 +1135,7 @@ function setupForm() {
 // ---------- загрузка XML декларации ----------
 // Файл ДТ из программы декларанта: ED_Container → ESADout_CU (тот же файл, что открывается в Excel).
 // Префиксы тегов бывают разные (cat_ru:, catESAD_cu:, ns6:…), поэтому теги ищем по имени без префикса.
-//   ДТ (графа A)                   — номер из самого XML, если он там есть, иначе из имени файла 10009100_131026_5166277.xml;
+//   ДТ (графа A)                   — комментарий <!--ND=…--> в конце XML, нет — теги номера, нет — имя файла 10009100_131026_5166277.xml;
 //   Курс по ДТ (графа 23)          — ContractCurrencyRate;
 //   Орган въезда/выезда (графа 29) — BorderCustomsOffice/OfficeName, нет — DeliveryPlace;
 //   Резерв (где растоможили)       — OfficeName / DeliveryPlace, сверенные со списком резерва;
@@ -1183,6 +1183,11 @@ async function readXmlText(file) {
   try { return new TextDecoder(encoding).decode(bytes); } catch (_) { return new TextDecoder("utf-8").decode(bytes); }
 }
 
+/** Номер ДТ из комментария в конце файла: «</ED_Container><!--ND=10009100/131026/5166277-->». Local= — местный номер, не он. */
+function xmlNd(text) {
+  const found = [...String(text || "").matchAll(/<!--\s*ND\s*=\s*(\d+(?:\s*\/\s*\d+)+)\s*-->/gi)];
+  return found.length ? found[found.length - 1][1].replace(/\s+/g, "") : "";
+}
 /** Номер ДТ в самом XML: код таможни / дата регистрации / номер — не из представленных (гр. 44) и предшествующих (гр. 40) документов. */
 function xmlDt(doc) {
   for (const numberNode of xmlAll(doc, "GTDNumber")) {
@@ -1241,7 +1246,8 @@ function parseDtXml(text, fileName) {
   const warnings = [];
 
   // ДТ
-  let dt = xmlDt(doc), dtFrom = dt ? "xml" : "";
+  // Сначала ND в конце файла, потом теги номера, и только потом имя файла.
+  let dt = xmlNd(text) || xmlDt(doc), dtFrom = dt ? "xml" : "";
   if (!dt) { dt = fileDt(fileName); dtFrom = dt ? "file" : ""; }
   if (dt && dtProblem(dt)) { dt = ""; dtFrom = ""; }
 
